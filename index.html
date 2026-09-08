@@ -1745,7 +1745,7 @@ const SPORTSBOOK_DOMAINS={
 };
 function sportsbookDomain(book){const n=clean(book).toLowerCase().replace(/\s+/g,' ');return SPORTSBOOK_DOMAINS[n]||''}
 function sportsbookLogoHTML(book){const n=clean(book).toLowerCase().replace(/\s+/g,' ');if(n==='caesars')return `<img class="odds-book-logo caesars-book-logo" src="https://s202.q4cdn.com/508919455/files/doc_multimedia/Logo_for_BW%40thumbnail.png" alt="Caesars Sportsbook logo" onerror="this.src='https://www.google.com/s2/favicons?domain=caesars.com&sz=64'">`;const d=sportsbookDomain(book);return d?`<img class="odds-book-logo" src="https://www.google.com/s2/favicons?domain=${d}&sz=64" alt="${book} logo" onerror="this.style.display='none'">`:''}
-function oddsBoardStyle(n){return `grid-template-columns:170px repeat(${n},minmax(105px,1fr));min-width:${170+n*105}px`}
+function oddsBoardStyle(n){const books=Math.max(1,Number(n)||1);const bookWidth=128;const teamWidth=190;return `--odds-books:${books};grid-template-columns:${teamWidth}px repeat(${books},minmax(${bookWidth}px,1fr)) !important;min-width:${teamWidth+books*bookWidth}px !important;width:100% !important`}
 function marketPanelHTML(b,type){
  const row=findMarketRow(type==='spread'?state.spreadOdds:state.totalOdds,b),groups=marketGroups(row,type);
  if(!row||!groups.length)return `<div class="odds-book-empty">No ${type} book numbers found for this game in the <b>${type}</b> sheet.</div>`;
@@ -3172,3 +3172,218 @@ html,body,.app,main{
 }
 </style>
 
+<style id="odds-dropdown-consistency-final">
+/* FINAL ODDS DROPDOWN NORMALIZATION
+   Each open game uses its actual sportsbook count from oddsBoardStyle(). */
+#view-odds .odds-card-wrap.open{
+  grid-column:1 / -1 !important;
+  width:100% !important;
+  min-width:0 !important;
+}
+#view-odds .odds-card-wrap.open .odds-card{
+  width:100% !important;
+  max-width:none !important;
+}
+#view-odds .odds-book-detail{
+  width:100% !important;
+  min-width:0 !important;
+  overflow:hidden !important;
+  background:#fff !important;
+  border:1px solid #b9ccd5 !important;
+  border-top:0 !important;
+  border-radius:0 0 9px 9px !important;
+  padding:12px !important;
+  box-shadow:none !important;
+}
+#view-odds .odds-market-tabs{
+  display:flex !important;
+  align-items:center !important;
+  gap:8px !important;
+  margin:0 0 10px !important;
+  padding:0 !important;
+  background:transparent !important;
+}
+#view-odds .odds-market-tab{
+  flex:0 0 auto !important;
+  min-width:92px !important;
+  background:#fff !important;
+  color:#0878bd !important;
+  border:1px solid #74bde2 !important;
+  border-radius:999px !important;
+  padding:8px 16px !important;
+  font-size:10px !important;
+  font-weight:900 !important;
+  letter-spacing:.06em !important;
+  box-shadow:none !important;
+  transform:none !important;
+}
+#view-odds .odds-market-tab:hover{
+  background:#e7f6fd !important;
+  color:#0878bd !important;
+  border-color:#1597e5 !important;
+  transform:none !important;
+}
+#view-odds .odds-market-tab.active{
+  background:#1597e5 !important;
+  color:#fff !important;
+  border-color:#1597e5 !important;
+  box-shadow:none !important;
+}
+#view-odds .odds-market-panel{
+  width:100% !important;
+  min-width:0 !important;
+}
+#view-odds .odds-lines-scroll{
+  width:100% !important;
+  max-width:100% !important;
+  overflow-x:auto !important;
+  overflow-y:hidden !important;
+  background:#fff !important;
+  border:1px solid #b9ccd5 !important;
+  border-radius:7px !important;
+  -webkit-overflow-scrolling:touch !important;
+}
+#view-odds .odds-lines-board{
+  display:grid !important;
+  align-items:stretch !important;
+  background:#fff !important;
+  width:100% !important;
+}
+#view-odds .odds-lines-cell{
+  min-width:0 !important;
+  min-height:54px !important;
+  background:#fff !important;
+  color:#243746 !important;
+  border-top:1px solid #d4e0e5 !important;
+  border-right:1px solid #d4e0e5 !important;
+  padding:10px 9px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  text-align:center !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  box-shadow:none !important;
+  transform:none !important;
+}
+/* Undo old hard-coded 5-column border logic. */
+#view-odds .odds-lines-cell:nth-child(5n){
+  border-right:1px solid #d4e0e5 !important;
+}
+#view-odds .odds-lines-head{
+  min-height:66px !important;
+  background:#cdeef8 !important;
+  color:#173b57 !important;
+  border-top:0 !important;
+  border-color:#9fc6d6 !important;
+  flex-direction:column !important;
+  gap:5px !important;
+  padding:8px 6px !important;
+}
+#view-odds .odds-lines-corner{
+  position:static !important;
+  left:auto !important;
+  z-index:auto !important;
+  justify-content:flex-start !important;
+  text-align:left !important;
+  padding-left:12px !important;
+  background:#cdeef8 !important;
+  color:#173b57 !important;
+}
+#view-odds .odds-book-brand{
+  color:#173b57 !important;
+  font-size:10px !important;
+  font-weight:900 !important;
+  line-height:1.1 !important;
+  white-space:normal !important;
+  overflow-wrap:anywhere !important;
+  max-width:110px !important;
+  text-align:center !important;
+}
+#view-odds .odds-book-logo{
+  width:27px !important;
+  height:27px !important;
+  object-fit:contain !important;
+  background:#fff !important;
+  border:1px solid #c8d3d9 !important;
+  border-radius:6px !important;
+  padding:3px !important;
+  box-shadow:none !important;
+  transform:none !important;
+}
+#view-odds .caesars-book-logo{
+  width:52px !important;
+  max-width:52px !important;
+  height:27px !important;
+}
+#view-odds .odds-team-line,
+#view-odds .odds-total-label{
+  position:static !important;
+  left:auto !important;
+  z-index:auto !important;
+  background:#fff !important;
+  color:#173b57 !important;
+  justify-content:flex-start !important;
+  text-align:left !important;
+  padding-left:12px !important;
+}
+#view-odds .odds-team-line strong{
+  color:#173b57 !important;
+  font-size:12px !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+}
+#view-odds .odds-team-line .mini-logo{
+  width:30px !important;
+  height:30px !important;
+  flex:0 0 30px !important;
+}
+#view-odds .odds-line-number{
+  background:#fff7c7 !important;
+  color:#554708 !important;
+  font-size:14px !important;
+  font-weight:900 !important;
+  font-variant-numeric:tabular-nums !important;
+}
+#view-odds .odds-line-number:hover{
+  background:#fff1a3 !important;
+  color:#3d3505 !important;
+  box-shadow:none !important;
+  transform:none !important;
+}
+#view-odds .odds-total-matchup{
+  display:flex !important;
+  align-items:center !important;
+  gap:7px !important;
+  flex-wrap:wrap !important;
+  margin:0 0 9px 2px !important;
+  color:#667985 !important;
+  background:transparent !important;
+}
+#view-odds .odds-total-matchup strong{color:#173b57 !important;}
+#view-odds .odds-book-empty{
+  background:#f7fbfd !important;
+  color:#667985 !important;
+  border:1px dashed #b9ccd5 !important;
+  border-radius:7px !important;
+  padding:16px !important;
+}
+#view-odds .odds-book-empty b{color:#173b57 !important;}
+
+/* Make the clickable game card and hint consistent for every row. */
+#view-odds .odds-card{
+  cursor:pointer !important;
+}
+#view-odds .odds-drop-hint{
+  color:#173b57 !important;
+  font-weight:900 !important;
+}
+
+@media(max-width:760px){
+  #view-odds .odds-book-detail{padding:9px !important;}
+  #view-odds .odds-lines-scroll{overflow-x:auto !important;}
+  #view-odds .odds-lines-cell{padding:9px 7px !important;}
+  #view-odds .odds-market-tab{flex:1 1 0 !important;min-width:0 !important;}
+}
+</style>
