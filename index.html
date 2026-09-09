@@ -2003,6 +2003,22 @@ function advancedLineAdjustment(mm){
 }
 function mmConfidenceLabel(c){return c>=.70?'HIGH':c>=.40?'MEDIUM':'LOW'}
 function mmScore(v){return Number.isFinite(v)?v.toFixed(1):'—'}
+function mmGrade(v){
+ if(!Number.isFinite(v))return '—';
+ if(v>=90)return 'A+';
+ if(v>=85)return 'A';
+ if(v>=80)return 'A-';
+ if(v>=75)return 'B+';
+ if(v>=70)return 'B';
+ if(v>=65)return 'B-';
+ if(v>=60)return 'C+';
+ if(v>=55)return 'C';
+ if(v>=50)return 'C-';
+ if(v>=47)return 'D+';
+ if(v>=45)return 'D';
+ if(v>=42)return 'D-';
+ return 'F';
+}
 function mmFmtRaw(v){
  if(!Number.isFinite(v))return '—';
  const a=Math.abs(v);
@@ -2046,7 +2062,7 @@ function mmMetricGrid(teamM){
  const keys=['rushSuccess','rushPPA','lineYds','powerSuccess','stuffRate','havoc','passSuccess','passPPA','pdSuccess','pdPPA','overallSuccess','overallPPA','overallExpl','finishing'];
  return keys.map(k=>{
   const m=teamM.metrics[k]||Object.values(teamM.metrics).find(x=>x&&x.id===k);
-  return m?`<div class="mm-detail-cell"><span>${m.label}</span><b>${mmScore(m.score)}</b><small>OFF ${mmScore(m.rawOffStrength)}→${mmScore(m.offStrength)} · DEF ${mmScore(m.rawDefVuln)}→${mmScore(m.defVuln)}</small></div>`:'';
+  return m?`<div class="mm-detail-cell"><span>${m.label}</span><div class="mm-scoreline"><b>${mmScore(m.score)}</b><strong class="mm-grade">${mmGrade(m.score)}</strong></div><small>OFF ${mmScore(m.rawOffStrength)}→${mmScore(m.offStrength)} · DEF ${mmScore(m.rawDefVuln)}→${mmScore(m.defVuln)}</small></div>`:'';
  }).join('');
 }
 function mmScheduleContextHTML(teamM){
@@ -2079,7 +2095,7 @@ function renderMismatch(){
    <div class="mm-head-stats"><div><span>GAMES</span><b>${rows.length}</b></div><div><span>SCORED</span><b>${valid.length}</b></div><div><span>TOP GAP</span><b>${top?mmScore(mmGap(top.mm,key)):'—'}</b></div></div>
   </div>
   <div class="mm-tools"><label>SORT BY <select onchange="setMismatchSort(this.value)">${MM_SORT_OPTIONS.map(([v,l])=>`<option value="${v}" ${v===key?'selected':''}>${l}</option>`).join('')}</select></label><button onclick="setMismatchSort('${key}')">${dir==='desc'?'BIGGEST ↓':'SMALLEST ↑'}</button><span>${sortLabel} · gap between the two offenses' matchup scores</span></div>
-  <div class="mm-legend"><b>How to read it:</b> 80+ = major favorable matchup · 65–79 = clear edge · 45–64 = roughly neutral · below 45 = unfavorable. Stats earned against weak opponents are discounted; production against strong opponents gets more credit. Team power is only a light prior, so the advanced data can still identify underrated teams.</div>
+  <div class="mm-legend"><b>How to read it:</b> every expanded stat now includes a letter grade from <b>A+</b> (elite favorable matchup) through <b>F</b> (poor matchup). 80+ is A-range, 65–79 is B-range, 50–64 is C-range, 42–49 is D-range, and below 42 is F. Stats earned against weak opponents are discounted; production against strong opponents gets more credit.</div>
   <div class="mm-list">${rows.map((r,idx)=>{
    const m=r.mm,sortGap=mmGap(m,key),leader=mmLeader(m,key);
    if(!m.valid){
@@ -2400,7 +2416,7 @@ switchView('odds');
 .mm-body{border-top:1px solid #cbdce2;background:#f7fbfd;padding:12px}.mm-team-panels{display:grid;grid-template-columns:1fr 1fr;gap:10px}.mm-team-panel{background:#fff;border:1px solid #c7d9df;border-radius:7px;overflow:hidden}.mm-team-title{display:grid;grid-template-columns:38px 1fr auto;align-items:center;gap:9px;padding:10px 12px;background:#cdeef8;border-bottom:1px solid #a9ccd9}.mm-team-title .mini-logo{width:34px!important;height:34px!important}.mm-team-title b{display:block;color:#173b57;font-size:13px}.mm-team-title span{display:block;color:#607985;font-size:9px;margin-top:2px}.mm-team-title>strong{font-size:25px;color:#0878bd}
 .mm-context-row{display:grid;grid-template-columns:repeat(3,1fr);background:#f7fbfd;border-bottom:1px solid #d6e2e6}.mm-context-row>div{padding:8px 10px}.mm-context-row>div+div{border-left:1px solid #dfe8eb}.mm-context-row span{display:block;font-size:7px;font-weight:950;letter-spacing:.08em;color:#728791}.mm-context-row b{display:block;margin-top:3px;color:#173b57;font-size:14px}.mm-context-row small{display:block;margin-top:2px;color:#71838d;font-size:8px}
 .mm-cat-grid{display:grid;grid-template-columns:repeat(6,1fr);border-bottom:1px solid #d6e2e6}.mm-cat-grid>div{padding:8px;text-align:center}.mm-cat-grid>div+div{border-left:1px solid #dfe8eb}.mm-cat-grid span{display:block;text-transform:uppercase;font-size:7px;font-weight:900;color:#758994}.mm-cat-grid b{display:block;margin-top:3px;color:#243746;font-size:13px}
-.mm-detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0}.mm-detail-cell{padding:9px 10px;border-right:1px solid #e0e8eb;border-bottom:1px solid #e0e8eb}.mm-detail-cell span{display:block;font-size:8px;color:#6d808a;text-transform:uppercase;font-weight:900}.mm-detail-cell b{display:block;color:#173b57;font-size:15px;margin-top:3px}.mm-detail-cell small{display:block;color:#7a8d96;font-size:8px;margin-top:2px}
+.mm-detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0}.mm-detail-cell{padding:9px 10px;border-right:1px solid #e0e8eb;border-bottom:1px solid #e0e8eb}.mm-detail-cell span{display:block;font-size:8px;color:#6d808a;text-transform:uppercase;font-weight:900}.mm-detail-cell b{display:block;color:#173b57;font-size:15px}.mm-scoreline{display:flex;align-items:center;gap:7px;margin-top:3px}.mm-grade{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:20px;padding:0 6px;border:1px solid #b9cbd2;border-radius:5px;background:#eef4f6;color:#173b57;font-size:10px;font-weight:950;letter-spacing:.02em}.mm-detail-cell small{display:block;color:#7a8d96;font-size:8px;margin-top:2px}
 .mm-model-note{display:grid;grid-template-columns:160px 160px 180px 1fr;gap:8px;margin-top:10px}.mm-model-note>div,.mm-model-note>p{margin:0;background:#fff;border:1px solid #c8d9df;border-radius:6px;padding:9px 11px}.mm-model-note span{display:block;font-size:7px;font-weight:950;letter-spacing:.09em;color:#718792}.mm-model-note b{display:block;color:#173b57;font-size:16px;margin-top:3px}.mm-model-note small{display:block;color:#71828b;font-size:8px;margin-top:2px}.mm-model-note>p{color:#617681;font-size:9px;line-height:1.45}
 .mm-missing{display:grid;grid-template-columns:38px minmax(330px,.8fr) 1fr;min-height:64px}.mm-missing .mm-match{border-right:1px solid #d6e2e6}.mm-no-score{display:flex;align-items:center;gap:12px;padding:10px 14px}.mm-no-score b{color:#8d3030;font-size:10px}.mm-no-score span{color:#72848d;font-size:9px}
 @media(max-width:1150px){.mm-game summary{grid-template-columns:34px 1fr repeat(2,95px) 145px}.mm-category:nth-of-type(4),.mm-category:nth-of-type(5){display:none}.mm-team-panels{grid-template-columns:1fr}.mm-model-note{grid-template-columns:1fr 1fr 1fr}.mm-model-note>p{grid-column:1/-1}}
