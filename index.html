@@ -1824,7 +1824,7 @@ const MM_COMPONENTS={
 };
 const MM_CATEGORY_WEIGHTS={run:.25,pass:.30,efficiency:.20,explosive:.10,trenches:.05,finishing:.10};
 const MM_SORT_OPTIONS=[
- ['total','Total Mismatch'],['run','Run Mismatch'],['pass','Pass Mismatch'],['efficiency','Efficiency'],['explosive','Explosiveness'],['trenches','Trenches'],['finishing','Finishing Drives'],
+ ['total','Overall Matchup Gap'],['run','Run Mismatch'],['pass','Pass Mismatch'],['efficiency','Efficiency'],['explosive','Explosiveness'],['trenches','Trenches'],['finishing','Finishing Drives'],
  ['rushSuccess','Rush Success'],['rushPPA','Rush PPA'],['lineYds','Line Yards'],['rushExpl','Rush Explosiveness'],['powerSuccess','Power Success'],['stuffRate','Stuff Rate'],['havoc','Havoc'],
  ['passSuccess','Pass Success'],['passPPA','Pass PPA'],['pdSuccess','Passing Downs Success'],['pdPPA','Passing Downs PPA'],['overallSuccess','Overall Success'],['overallPPA','Overall PPA'],['overallExpl','Overall Explosiveness']
 ];
@@ -1957,29 +1957,73 @@ function mmOpponentAdjustedPercentile(rawPct,team,kind){
  const adjusted=mmClamp(sosAdjusted+powerAdjustment);
  return {raw:rawPct,adjusted,sos:profile.sos,games:profile.games,powerPct,sosAdjustment,powerAdjustment,profile};
 }
+
+function mmUnitMetric(team,c,side){
+ const row=mmTeamRow(c.sheet,team);
+ if(!row)return null;
+ if(side==='offense'){
+   const raw=mmNum(row[c.off]);
+   if(!Number.isFinite(raw))return null;
+   const score=mmPercentile(c.sheet,c.off,raw,c.offHigh);
+   return {id:c.id,label:c.label,raw,score,side:'offense'};
+ }
+ const raw=mmNum(row[c.def]);
+ if(!Number.isFinite(raw))return null;
+ // Defensive grade is STRENGTH, not vulnerability.
+ // If a higher defensive raw number is bad (more vulnerable), lower is better.
+ const score=mmPercentile(c.sheet,c.def,raw,!c.defVulnHigh);
+ return {id:c.id,label:c.label,raw,score,side:'defense'};
+}
+function mmUnitCategory(team,side,key){
+ const defs=MM_COMPONENTS[key]||[];
+ let sum=0,w=0;
+ defs.forEach(c=>{
+   const m=mmUnitMetric(team,c,side);
+   if(m&&Number.isFinite(m.score)){sum+=m.score*c.w;w+=c.w}
+ });
+ return w>.999?sum/w:NaN;
+}
+function mmUnitProfile(team){
+ if(!mmHasAllSheets(team))return null;
+ const categories={offense:{},defense:{}};
+ Object.keys(MM_COMPONENTS).forEach(k=>{
+   categories.offense[k]=mmUnitCategory(team,'offense',k);
+   categories.defense[k]=mmUnitCategory(team,'defense',k);
+ });
+ const metrics={offense:{},defense:{}};
+ Object.values(MM_COMPONENTS).flat().forEach(c=>{
+   if(!metrics.offense[c.id])metrics.offense[c.id]=mmUnitMetric(team,c,'offense');
+   if(!metrics.defense[c.id])metrics.defense[c.id]=mmUnitMetric(team,c,'defense');
+ });
+ return {team,categories,metrics};
+}
 function mmMetric(offTeam,defTeam,c){
  const offRow=mmTeamRow(c.sheet,offTeam),defRow=mmTeamRow(c.sheet,defTeam);
  if(!offRow||!defRow)return null;
  const offRaw=mmNum(offRow[c.off]),defRaw=mmNum(defRow[c.def]);
  if(!Number.isFinite(offRaw)||!Number.isFinite(defRaw))return null;
 
- // Raw FBS percentiles only. No SOS and no team power-rating prior.
- // offStrength: 100 = elite offense for this stat.
- // defVuln: 100 = weak opponent defense; 0 = elite opponent defense.
+ // STRICT UNIT-TO-UNIT COMPARISON:
+ // Rush offense -> opponent rush defense
+ // Pass offense -> opponent pass defense
+ // Offensive efficiency -> opponent defensive efficiency
+ // etc.
+ // A team's own offensive and defensive numbers are NEVER combined here.
  const offStrength=mmPercentile(c.sheet,c.off,offRaw,c.offHigh);
- const defVuln=mmPercentile(c.sheet,c.def,defRaw,c.defVulnHigh);
- if(!Number.isFinite(offStrength)||!Number.isFinite(defVuln))return null;
+ const defStrength=mmPercentile(c.sheet,c.def,defRaw,!c.defVulnHigh);
+ if(!Number.isFinite(offStrength)||!Number.isFinite(defStrength))return null;
 
- // Relative matchup score:
- // elite offense vs elite defense ~= neutral
- // elite offense vs weak defense = elite matchup
- // weak offense vs elite defense = poor matchup
+ // Convert opponent defense strength into vulnerability ONLY for the head-to-head matchup.
+ const defVuln=100-defStrength;
  const score=mmClamp((offStrength+defVuln)/2);
 
  return {
    id:c.id,label:c.label,score,
-   offStrength,defVuln,defStrength:100-defVuln,
-   offRaw,defRaw
+   offStrength,
+   defStrength,
+   defVuln,
+   offRaw,
+   defRaw
  };
 }
 function mmWeighted(items,defs){
@@ -2005,9 +2049,19 @@ function mmTeamMatchup(offTeam,defTeam){
 }
 function advancedMatchupForGame(home,away){
  const homeM=mmTeamMatchup(home,away),awayM=mmTeamMatchup(away,home);
- if(!homeM||!awayM)return {home,away,valid:false,homeM:null,awayM:null,totalGap:NaN,edgeTeam:'',confidence:0};
+ const homeUnits=mmUnitProfile(home),awayUnits=mmUnitProfile(away);
+ if(!homeM||!awayM||!homeUnits||!awayUnits){
+   return {home,away,valid:false,homeM:null,awayM:null,homeUnits:null,awayUnits:null,totalGap:NaN,edgeTeam:'',confidence:0};
+ }
  const totalGap=Math.abs(homeM.total-awayM.total);
- return {home,away,valid:true,homeM,awayM,totalGap,edgeTeam:homeM.total>=awayM.total?home:away,confidence:mmGameConfidence(home,away)};
+ return {
+   home,away,valid:true,
+   homeM,awayM,
+   homeUnits,awayUnits,
+   totalGap,
+   edgeTeam:homeM.total>=awayM.total?home:away,
+   confidence:mmGameConfidence(home,away)
+ };
 }
 function mmTeamConfidence(team){
  const a=mmTeamRow('teamAdv',team);if(!a)return 0;
@@ -2082,17 +2136,58 @@ function setMismatchSort(key){
  else{state.mismatchSort=key;state.mismatchDir='desc'}
  renderMismatch();
 }
-function mmMetricGrid(teamM){
+function mmUnitMetricGrid(unitProfile,side){
+ const keys=['rushSuccess','rushPPA','lineYds','powerSuccess','stuffRate','havoc','passSuccess','passPPA','pdSuccess','pdPPA','overallSuccess','overallPPA','overallExpl','finishing'];
+ return keys.map(k=>{
+   const m=unitProfile?.metrics?.[side]?.[k]||Object.values(unitProfile?.metrics?.[side]||{}).find(x=>x&&x.id===k);
+   if(!m)return '';
+   return `<div class="mm-detail-cell mm-unit-cell">
+     <span>${m.label}</span>
+     <div class="mm-scoreline"><b>${mmScore(m.score)}</b><strong class="mm-grade">${mmGrade(m.score)}</strong></div>
+     <small>${side==='offense'?'OFFENSE':'DEFENSE'} RATING</small>
+   </div>`;
+ }).join('');
+}
+function mmUnitCategoryGrid(unitProfile,side){
+ return Object.entries(unitProfile?.categories?.[side]||{}).map(([k,v])=>
+   `<div><span>${k}</span><b>${mmScore(v)}</b><small>${mmGrade(v)}</small></div>`
+ ).join('');
+}
+function mmMatchupMetricGrid(teamM){
  const keys=['rushSuccess','rushPPA','lineYds','powerSuccess','stuffRate','havoc','passSuccess','passPPA','pdSuccess','pdPPA','overallSuccess','overallPPA','overallExpl','finishing'];
  return keys.map(k=>{
   const m=teamM.metrics[k]||Object.values(teamM.metrics).find(x=>x&&x.id===k);
   if(!m)return '';
-  return `<div class="mm-detail-cell">
-    <span>${m.label}</span>
+  return `<div class="mm-detail-cell mm-matchup-cell">
+    <span>${m.label} MATCHUP</span>
     <div class="mm-scoreline"><b>${mmScore(m.score)}</b><strong class="mm-grade">${mmGrade(m.score)}</strong></div>
-    <small>OFF ${mmScore(m.offStrength)} ${mmGrade(m.offStrength)} · OPP DEF ${mmScore(m.defStrength)} ${mmGrade(m.defStrength)}</small>
+    <small>OFF ${mmScore(m.offStrength)} ${mmGrade(m.offStrength)} vs DEF ${mmScore(m.defStrength)} ${mmGrade(m.defStrength)}</small>
   </div>`;
  }).join('');
+}
+function mmMatchupCategoryGrid(teamM){
+ return Object.entries(teamM.category).map(([k,v])=>
+   `<div><span>${k} MATCHUP</span><b>${mmScore(v)}</b><small>${mmGrade(v)}</small></div>`
+ ).join('');
+}
+function mmTeamUnitPanel(team,unitProfile){
+ return `<div class="mm-team-unit-card">
+   <div class="mm-unit-head">${logoHTML(team,'mini-logo')}<strong>${team}</strong></div>
+   <div class="mm-side-label mm-off-label">OFFENSE RATINGS</div>
+   <div class="mm-cat-grid mm-unit-cats">${mmUnitCategoryGrid(unitProfile,'offense')}</div>
+   <div class="mm-detail-grid">${mmUnitMetricGrid(unitProfile,'offense')}</div>
+   <div class="mm-side-label mm-def-label">DEFENSE RATINGS</div>
+   <div class="mm-cat-grid mm-unit-cats">${mmUnitCategoryGrid(unitProfile,'defense')}</div>
+   <div class="mm-detail-grid">${mmUnitMetricGrid(unitProfile,'defense')}</div>
+ </div>`;
+}
+function mmHeadToHeadPanel(offTeam,defTeam,teamM){
+ return `<div class="mm-team-panel mm-h2h-panel">
+   <div class="mm-team-title">${logoHTML(offTeam,'mini-logo')}<div><b>${offTeam} OFFENSE</b><span>vs ${defTeam} DEFENSE</span></div><strong>${mmScore(teamM.total)}</strong></div>
+   <div class="mm-side-label mm-match-label">HEAD-TO-HEAD MATCHUP — OFFENSE VS CORRESPONDING DEFENSE ONLY</div>
+   <div class="mm-cat-grid">${mmMatchupCategoryGrid(teamM)}</div>
+   <div class="mm-detail-grid">${mmMatchupMetricGrid(teamM)}</div>
+ </div>`;
 }
 function mmScheduleContextHTML(teamM){return '';}
 function renderMismatch(){
@@ -2109,13 +2204,13 @@ function renderMismatch(){
   return dir==='desc'?b-a:a-b;
  });
  const valid=rows.filter(r=>r.mm.valid),top=valid[0];
- const sortLabel=MM_SORT_OPTIONS.find(x=>x[0]===key)?.[1]||'Total Mismatch';
+ const sortLabel=MM_SORT_OPTIONS.find(x=>x[0]===key)?.[1]||'Overall Matchup Gap';
  el.innerHTML=`<div class="mm-shell">
-  <div class="mm-head"><div><span>BET THE JUICE ADVANCED</span><h2>Mismatch</h2><p>Matchups are pulled directly from the Spread sheet. Every FBS team's advanced stats are read from TeamAdv, Power, Rushing and Passing and matched directly against the opponent's defense.</p></div>
+  <div class="mm-head"><div><span>BET THE JUICE ADVANCED</span><h2>Mismatch</h2><p>Matchups are pulled directly from the Spread sheet. Every FBS team's offense and defense are graded separately. Matchup scores compare only the corresponding units: rush offense vs rush defense, pass offense vs pass defense, efficiency offense vs efficiency defense, and so on.</p></div>
    <div class="mm-head-stats"><div><span>GAMES</span><b>${rows.length}</b></div><div><span>SCORED</span><b>${valid.length}</b></div><div><span>TOP GAP</span><b>${top?mmScore(mmGap(top.mm,key)):'—'}</b></div></div>
   </div>
-  <div class="mm-tools"><label>SORT BY <select onchange="setMismatchSort(this.value)">${MM_SORT_OPTIONS.map(([v,l])=>`<option value="${v}" ${v===key?'selected':''}>${l}</option>`).join('')}</select></label><button onclick="setMismatchSort('${key}')">${dir==='desc'?'BIGGEST ↓':'SMALLEST ↑'}</button><span>${sortLabel} · gap between the two offenses' matchup scores</span></div>
-  <div class="mm-legend"><b>How to read it:</b> the large number and letter grade are the matchup score. The line underneath shows the team's own offensive percentile/grade and the opponent defense percentile/grade. Elite offense vs elite defense grades near neutral instead of incorrectly showing as an F. FCS teams have no advanced score.</div>
+  <div class="mm-tools"><label>SORT BY <select onchange="setMismatchSort(this.value)">${MM_SORT_OPTIONS.map(([v,l])=>`<option value="${v}" ${v===key?'selected':''}>${l}</option>`).join('')}</select></label><button onclick="setMismatchSort('${key}')">${dir==='desc'?'BIGGEST ↓':'SMALLEST ↑'}</button><span>${sortLabel} · gap between the two head-to-head offensive matchup scores</span></div>
+  <div class="mm-legend"><b>How to read it:</b> OFFENSE and DEFENSE ratings are completely separate. No team's offensive and defensive numbers are ever averaged together. The MATCHUP section compares each offensive stat only to the opponent's matching defensive stat — for example Rush Success Offense vs Rush Success Defense.</div>
   <div class="mm-list">${rows.map((r,idx)=>{
    const m=r.mm,sortGap=mmGap(m,key),leader=mmLeader(m,key);
    if(!m.valid){
@@ -2134,11 +2229,17 @@ function renderMismatch(){
      <div class="mm-total"><span>${sortLabel}</span><div>${logoHTML(leader,'mini-logo')}<b>${mmScore(sortGap)}</b></div><small>${leader} edge</small></div>
     </summary>
     <div class="mm-body">
-     <div class="mm-team-panels">
-      <div class="mm-team-panel"><div class="mm-team-title">${logoHTML(r.away,'mini-logo')}<div><b>${r.away} offense</b><span>vs ${r.home} defense</span></div><strong>${mmScore(m.awayM.total)}</strong></div>${mmScheduleContextHTML(m.awayM)}<div class="mm-cat-grid">${Object.entries(m.awayM.category).map(([k,v])=>`<div><span>${k}</span><b>${mmScore(v)}</b></div>`).join('')}</div><div class="mm-detail-grid">${mmMetricGrid(m.awayM)}</div></div>
-      <div class="mm-team-panel"><div class="mm-team-title">${logoHTML(r.home,'mini-logo')}<div><b>${r.home} offense</b><span>vs ${r.away} defense</span></div><strong>${mmScore(m.homeM.total)}</strong></div>${mmScheduleContextHTML(m.homeM)}<div class="mm-cat-grid">${Object.entries(m.homeM.category).map(([k,v])=>`<div><span>${k}</span><b>${mmScore(v)}</b></div>`).join('')}</div><div class="mm-detail-grid">${mmMetricGrid(m.homeM)}</div></div>
+     <div class="mm-section-title">TEAM RATINGS — OFFENSE AND DEFENSE KEPT COMPLETELY SEPARATE</div>
+     <div class="mm-team-panels mm-unit-panels">
+      ${mmTeamUnitPanel(r.away,m.awayUnits)}
+      ${mmTeamUnitPanel(r.home,m.homeUnits)}
      </div>
-     <div class="mm-model-note"><div><span>ADVANCED EDGE</span><b>${leader}</b><small>Total mismatch ${mmScore(m.totalGap)}</small></div><div><span>SAMPLE CONFIDENCE</span><b>${conf}</b><small>${Math.round(m.confidence*100)}% weighting maturity</small></div><div><span>MODEL LINE ADJUSTMENT</span><b>${adj>=0?'+':''}${adj.toFixed(2)}</b><small>${adj>=0?r.home:r.away} direction · capped at ±1.5</small></div><p>This is a supporting matchup signal, not a standalone bet recommendation. The advanced matchup adjustment remains confidence-weighted and capped at ±1.5.</p></div>
+     <div class="mm-section-title">ACTUAL MATCHUPS</div>
+     <div class="mm-team-panels">
+      ${mmHeadToHeadPanel(r.away,r.home,m.awayM)}
+      ${mmHeadToHeadPanel(r.home,r.away,m.homeM)}
+     </div>
+     <div class="mm-model-note"><div><span>ADVANCED EDGE</span><b>${leader}</b><small>Head-to-head matchup gap ${mmScore(m.totalGap)}</small></div><div><span>SAMPLE CONFIDENCE</span><b>${conf}</b><small>${Math.round(m.confidence*100)}% weighting maturity</small></div><div><span>MODEL LINE ADJUSTMENT</span><b>${adj>=0?'+':''}${adj.toFixed(2)}</b><small>${adj>=0?r.home:r.away} direction · capped at ±1.5</small></div><p>This is a supporting matchup signal, not a standalone bet recommendation. The model adjustment uses the difference between each team's OFFENSE-vs-opponent-DEFENSE matchup score. A team's own offense and defense are never blended.</p></div>
     </div>
    </details>`;
   }).join('')}</div>
@@ -2434,6 +2535,20 @@ switchView('odds');
 .mm-match{display:flex;align-items:center;gap:8px;padding:11px 13px;min-width:0;border-right:1px solid #d6e2e6}.mm-match>div{display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center;gap:7px;min-width:0;flex:1}.mm-match>span{font-size:8px;color:#8798a1;font-weight:950}.mm-match strong{font-size:12px;color:#173b57;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mm-match small{font-size:15px;font-weight:950;color:#0878bd}.mm-match .mini-logo{width:30px!important;height:30px!important}
 .mm-category{display:flex;flex-direction:column;justify-content:center;padding:9px 10px;border-right:1px solid #d6e2e6}.mm-category span,.mm-total>span{font-size:7px;font-weight:950;letter-spacing:.09em;color:#718692}.mm-category b{font-size:17px;color:#243746;margin:2px 0}.mm-category small{font-size:8px;color:#6a7c86;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mm-total{display:flex;flex-direction:column;justify-content:center;padding:9px 12px;background:#e7f6fd;border-left:2px solid #1597e5}.mm-total>div{display:flex;align-items:center;gap:7px;margin:2px 0}.mm-total .mini-logo{width:25px!important;height:25px!important}.mm-total b{font-size:22px;color:#0878bd}.mm-total small{font-size:8px;color:#536d7a}
+
+.mm-section-title{margin:10px 0 7px;padding:7px 10px;border:1px solid #c7d9df;border-radius:5px;background:#e8f2f5;color:#173b57;font-size:9px;font-weight:950;letter-spacing:.08em}
+.mm-team-unit-card{background:#fff;border:1px solid #c7d9df;border-radius:7px;overflow:hidden}
+.mm-unit-head{display:flex;align-items:center;gap:9px;padding:10px 12px;background:#cdeef8;border-bottom:1px solid #a9ccd9;color:#173b57}
+.mm-unit-head .mini-logo{width:34px!important;height:34px!important}
+.mm-unit-head strong{font-size:14px}
+.mm-side-label{padding:7px 10px;font-size:8px;font-weight:950;letter-spacing:.10em;border-bottom:1px solid #d6e2e6}
+.mm-off-label{background:#eef8ee;color:#31583c}
+.mm-def-label{background:#f4f0fb;color:#513f68;border-top:2px solid #c7d9df}
+.mm-match-label{background:#fff4dc;color:#6a541a}
+.mm-unit-cats small,.mm-cat-grid small{display:block;margin-top:2px;font-size:8px;font-weight:900;color:#617681}
+.mm-unit-cell small{font-weight:800;letter-spacing:.05em}
+.mm-matchup-cell{background:#fffdf7}
+.mm-h2h-panel{margin-top:0}
 .mm-body{border-top:1px solid #cbdce2;background:#f7fbfd;padding:12px}.mm-team-panels{display:grid;grid-template-columns:1fr 1fr;gap:10px}.mm-team-panel{background:#fff;border:1px solid #c7d9df;border-radius:7px;overflow:hidden}.mm-team-title{display:grid;grid-template-columns:38px 1fr auto;align-items:center;gap:9px;padding:10px 12px;background:#cdeef8;border-bottom:1px solid #a9ccd9}.mm-team-title .mini-logo{width:34px!important;height:34px!important}.mm-team-title b{display:block;color:#173b57;font-size:13px}.mm-team-title span{display:block;color:#607985;font-size:9px;margin-top:2px}.mm-team-title>strong{font-size:25px;color:#0878bd}
 .mm-context-row{display:grid;grid-template-columns:repeat(3,1fr);background:#f7fbfd;border-bottom:1px solid #d6e2e6}.mm-context-row>div{padding:8px 10px}.mm-context-row>div+div{border-left:1px solid #dfe8eb}.mm-context-row span{display:block;font-size:7px;font-weight:950;letter-spacing:.08em;color:#728791}.mm-context-row b{display:block;margin-top:3px;color:#173b57;font-size:14px}.mm-context-row small{display:block;margin-top:2px;color:#71838d;font-size:8px}
 .mm-cat-grid{display:grid;grid-template-columns:repeat(6,1fr);border-bottom:1px solid #d6e2e6}.mm-cat-grid>div{padding:8px;text-align:center}.mm-cat-grid>div+div{border-left:1px solid #dfe8eb}.mm-cat-grid span{display:block;text-transform:uppercase;font-size:7px;font-weight:900;color:#758994}.mm-cat-grid b{display:block;margin-top:3px;color:#243746;font-size:13px}
